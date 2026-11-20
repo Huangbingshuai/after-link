@@ -1,0 +1,946 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F5F6F2">
+  <title>掌柜智库 · 工作台</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --paper: #f5f6f2;
+      --surface: #fff;
+      --ink: #202724;
+      --pine: #294a3a;
+      --leaf: #dde7dc;
+      --line: #e0e5de;
+      --copper: #b48b57;
+      --muted: #55645a;
+      --error: #8d3d31;
+      font: 15px/1.65 "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+      color: var(--ink);
+      background: var(--paper);
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    body { margin: 0; }
+    h1, h2, h3, p { margin: 0; }
+    button, textarea { font: inherit; color: inherit; }
+    button { cursor: pointer; }
+    button:disabled { cursor: default; opacity: .55; }
+    :focus-visible { outline: 3px solid #45765c; outline-offset: 4px; }
+    a { color: var(--pine); text-underline-offset: .2em; }
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+    .shell { display: grid; grid-template-columns: 230px minmax(0, 1fr); min-height: 100vh; }
+    main { min-width: 0; }
+    .sidebar {
+      position: sticky;
+      top: 0;
+      align-self: start;
+      height: 100vh;
+      padding: 30px 20px;
+      border-right: 1px solid var(--line);
+      background: #ecf0e9;
+    }
+    .brand { display: flex; gap: 11px; align-items: center; padding: 0 8px; }
+    .brand-mark {
+      display: grid;
+      place-items: center;
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      background: var(--pine);
+      color: white;
+      font-size: 17px;
+    }
+    .brand strong { display: block; font-size: 17px; letter-spacing: .07em; }
+    .brand small { display: block; color: var(--muted); font-size: 11px; letter-spacing: .14em; }
+    .nav { display: grid; gap: 4px; margin-top: 37px; padding-top: 18px; border-top: 1px solid #d7e0d5; }
+    .nav button {
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-height: 45px;
+      padding: 9px 13px;
+      border: 1px solid transparent;
+      border-radius: 7px;
+      background: transparent;
+      text-align: left;
+    }
+    .nav button:hover { background: #e4ebe2; }
+    .nav button[aria-pressed="true"] {
+      color: var(--pine);
+      background: var(--leaf);
+      font-weight: 650;
+    }
+    .nav button[aria-pressed="true"]::before {
+      position: absolute;
+      inset: 10px auto 10px 0;
+      width: 3px;
+      border-radius: 0 3px 3px 0;
+      background: var(--pine);
+      content: "";
+    }
+    .nav-icon { width: 15px; height: 13px; border: 1.5px solid currentColor; border-radius: 3px; }
+    .nav-icon.file { width: 12px; height: 15px; margin-inline: 1px 2px; border-radius: 2px; }
+    .nav-icon::after { display: block; width: 6px; margin: 4px auto; border-top: 1px solid; content: ""; }
+    .view {
+      --gutter: clamp(22px, 5vw, 70px);
+      display: grid;
+      grid-template-rows: auto 1fr;
+      min-width: 0;
+    }
+    .chat-view { grid-template-rows: auto minmax(160px, 1fr) auto; height: 100vh; height: 100dvh; }
+    .view-header { padding: 39px var(--gutter) 23px; border-bottom: 1px solid var(--line); }
+    .header-inner, .reading-width, .composer-inner, .import-content { width: min(100%, 900px); margin-inline: auto; }
+    .header-inner { display: flex; justify-content: space-between; align-items: end; gap: 12px 24px; flex-wrap: wrap; }
+    .header-inner h1 { font-size: clamp(25px, 3vw, 34px); line-height: 1.2; letter-spacing: -.035em; }
+    .header-inner p { margin-top: 8px; color: var(--muted); font-size: 13px; }
+    .header-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; }
+    .service, .task-status { display: inline-flex; gap: 7px; align-items: center; color: var(--muted); font-size: 12px; }
+    .service::before, .task-status::before {
+      flex: 0 0 auto;
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--copper);
+      content: "";
+    }
+    [data-state="ok"] { color: var(--pine); }
+    [data-state="ok"]::before { background: #4c765d; }
+    [data-state="error"] { color: var(--error); }
+    [data-state="error"]::before { background: var(--error); }
+    .quiet-button, .primary {
+      min-height: 40px;
+      padding: 7px 14px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: var(--surface);
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .quiet-button:hover:not(:disabled) { border-color: #a0b1a3; background: #edf1eb; }
+    .primary { border-color: var(--pine); background: var(--pine); color: white; }
+    .primary:hover:not(:disabled) { background: #365e49; }
+    .chat-scroll { min-height: 0; overflow: auto; padding: 26px var(--gutter); }
+    .reading-width { display: flex; flex-direction: column; min-height: 100%; }
+    .chat-notice { margin: 0 0 12px; color: var(--error); font-size: 13px; }
+    .chat-notice:empty, .answer-error:empty { display: none; }
+    .empty-chat { width: min(100%, 460px); margin: auto; padding-block: 27px; text-align: center; }
+    .empty-chat h2 { font-size: clamp(21px, 3vw, 29px); font-weight: 650; }
+    .empty-chat p { margin: 9px 0 17px; color: var(--muted); }
+    .book-mark {
+      position: relative;
+      width: 51px;
+      height: 44px;
+      margin: 0 auto 24px;
+      border: 2px solid #577562;
+      border-radius: 5px 5px 3px 5px;
+      background: var(--leaf);
+      box-shadow: 4px 4px 0 #ecf0e9;
+    }
+    .book-mark::before { position: absolute; inset: 0 auto 0 7px; border-left: 1px solid #577562; content: ""; }
+    .book-mark::after { position: absolute; top: 6px; right: 9px; width: 9px; height: 23px; background: var(--copper); clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 78%, 0 100%); content: ""; }
+    .examples { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+    .examples button { font-weight: 400; }
+    .conversation { display: grid; gap: 22px; }
+    .message { min-width: 0; }
+    .message.user { max-width: min(78%, 660px); margin-left: auto; }
+    .message.assistant { max-width: 820px; }
+    .message-meta { display: flex; align-items: center; gap: 10px; margin-bottom: 5px; color: var(--muted); font-size: 12px; }
+    .user .message-meta { justify-content: end; }
+    .message-meta strong { color: var(--pine); }
+    .message-body { padding: 14px 17px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); overflow-wrap: anywhere; }
+    .user .message-body { background: #e6ede3; white-space: pre-wrap; }
+    .answer { white-space: pre-wrap; }
+    .answer-error { margin-top: 8px; color: var(--error); }
+    .citation {
+      display: inline-block;
+      margin-inline: .18em;
+      padding: 0 .28em;
+      border-left: 2px solid var(--copper);
+      background: #f6f1e8;
+      color: #58482f;
+      font-family: Georgia, serif;
+      font-size: .88em;
+      text-decoration: none;
+    }
+    .source-index, .answer-images { display: grid; gap: 7px; margin-top: 15px; white-space: normal; }
+    .source-index h3 { color: var(--muted); font-size: 12px; }
+    .source-entry { padding: 4px 10px; border-left: 2px solid var(--copper); background: #f8f5ef; }
+    .answer-images img { display: block; max-width: 100%; max-height: 340px; margin-bottom: 4px; object-fit: contain; object-position: left; border-radius: 5px; }
+    .answer-images a { width: fit-content; font-size: 13px; }
+    details { font-size: 13px; color: var(--muted); }
+    .message details { margin-top: 10px; }
+    summary { width: fit-content; cursor: pointer; }
+    .stage-list { margin: 6px 0 0; padding-left: 20px; }
+    .composer { padding: 13px var(--gutter) 20px; border-top: 1px solid var(--line); }
+    .composer-form {
+      display: flex;
+      align-items: end;
+      gap: 8px;
+      padding: 8px;
+      border: 1px solid #ccd8ce;
+      border-radius: 10px;
+      background: var(--surface);
+    }
+    .composer-form:focus-within { border-color: #72917d; }
+    .composer textarea { flex: 1; min-width: 0; min-height: 58px; max-height: 27vh; padding: 8px; resize: vertical; border: 0; background: transparent; }
+    .composer-hint { margin: 6px 2px 0; color: var(--muted); font-size: 11px; }
+    .import-content { padding: 27px var(--gutter) 38px; width: min(100%, calc(900px + 2 * var(--gutter))); }
+    .dropzone {
+      display: grid;
+      place-items: center;
+      gap: 9px;
+      padding: 32px 16px;
+      border: 1px dashed #879d8d;
+      border-radius: 11px;
+      background: #f9faf7;
+      text-align: center;
+    }
+    .dropzone[data-dragging="true"] { border-color: var(--pine); background: var(--leaf); }
+    .upload-mark {
+      display: grid;
+      place-items: center;
+      width: 38px;
+      height: 38px;
+      border: 1px solid #d3e0d3;
+      border-radius: 8px;
+      background: var(--leaf);
+      color: var(--pine);
+      font-size: 22px;
+      line-height: 1;
+    }
+    .dropzone h2 { font-size: 20px; }
+    .dropzone p { color: var(--muted); font-size: 13px; }
+    .dropzone .primary { margin-top: 3px; }
+    .tasks { margin-top: 30px; }
+    .tasks > h2 { padding-bottom: 10px; border-bottom: 1px solid var(--line); font-size: 16px; }
+    .empty-tasks { padding: 15px 0; color: var(--muted); font-size: 13px; }
+    .task-list { display: grid; gap: 8px; margin: 12px 0 0; padding: 0; list-style: none; }
+    .task {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: start;
+      gap: 4px 14px;
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+      overflow-wrap: anywhere;
+    }
+    .task h3 { font-size: 14px; }
+    .task-size { color: var(--muted); font-size: 12px; }
+    .task progress { grid-column: 1 / -1; width: 100%; height: 8px; margin-block: 6px; accent-color: var(--pine); }
+    .task details, .task-note { grid-column: 1 / -1; }
+    .task-note { color: var(--error); font-size: 13px; }
+    .task-note:empty { display: none; }
+    @media (max-width: 740px) {
+      .shell { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+      .sidebar { position: static; height: auto; padding: 12px 16px 9px; border-right: 0; border-bottom: 1px solid var(--line); }
+      .brand { padding: 0; }
+      .brand-mark { width: 28px; height: 28px; font-size: 14px; }
+      .brand strong { font-size: 14px; }
+      .brand small { display: none; }
+      .nav { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 9px; padding-top: 0; border-top: 0; }
+      .nav button { min-height: 38px; padding: 6px 10px; font-size: 13px; }
+      .view { --gutter: 16px; }
+      .view-header { padding-block: 18px 12px; }
+      .chat-view { height: calc(100dvh - 97px); min-height: 430px; }
+      .chat-scroll { padding-block: 15px; }
+      .composer { padding-block: 8px 12px; }
+      .task { padding: 11px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+      progress:not([value]) { appearance: none; border: 0; border-radius: 3px; background: var(--leaf); }
+      progress:not([value])::-webkit-progress-bar { background: var(--leaf); }
+      progress:not([value])::-webkit-progress-value { background: var(--leaf); }
+      progress:not([value])::-moz-progress-bar { background: var(--leaf); }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">掌</span>
+        <div><strong>掌柜智库</strong><small>工作台</small></div>
+      </div>
+      <nav class="nav" aria-label="工作台导航">
+        <button type="button" aria-pressed="true" aria-controls="chat-view">
+          <span class="nav-icon" aria-hidden="true"></span>知识问答
+        </button>
+        <button type="button" aria-pressed="false" aria-controls="import-view">
+          <span class="nav-icon file" aria-hidden="true"></span>文档导入
+        </button>
+      </nav>
+    </aside>
+
+    <main>
+      <section class="view chat-view" id="chat-view" aria-labelledby="chat-title">
+        <header class="view-header">
+          <div class="header-inner">
+            <div>
+              <h1 id="chat-title">知识问答</h1>
+              <p>查找手册中的操作步骤、产品规格和故障处理方法。</p>
+            </div>
+            <div class="header-actions">
+              <span class="service" id="query-service" role="status">正在检查问答服务</span>
+              <button class="quiet-button" id="clear-history" type="button" disabled>清空历史</button>
+            </div>
+          </div>
+        </header>
+
+        <div class="chat-scroll" id="chat-scroll" tabindex="0" role="region" aria-label="会话记录">
+          <div class="reading-width">
+            <p class="chat-notice" id="chat-notice" role="status"></p>
+            <div class="empty-chat" id="empty-chat">
+              <div class="book-mark" aria-hidden="true"></div>
+              <h2 id="empty-chat-title">正在加载会话</h2>
+              <p>提供产品型号或使用场景，可以缩小查询范围。</p>
+              <div class="examples" id="examples" hidden>
+                <button class="quiet-button" type="button" data-draft="请查找这款设备的开机操作步骤：">查找操作步骤</button>
+                <button class="quiet-button" type="button" data-draft="请查找这个故障代码的处理方法：">查找故障处理</button>
+              </div>
+            </div>
+            <div class="conversation" id="conversation"></div>
+            <span class="sr-only" id="query-announcement" role="status"></span>
+          </div>
+        </div>
+
+        <div class="composer">
+          <div class="composer-inner">
+            <form class="composer-form" id="query-form">
+              <label class="sr-only" for="query-input">输入问题</label>
+              <textarea id="query-input" rows="2" placeholder="输入问题，可附上产品型号或故障代码" aria-describedby="composer-hint"></textarea>
+              <button class="primary" id="send-query" type="submit" disabled>发送</button>
+            </form>
+            <p class="composer-hint" id="composer-hint">Enter 发送 · Shift + Enter 换行</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="view" id="import-view" aria-labelledby="import-title" hidden>
+        <header class="view-header">
+          <div class="header-inner">
+            <div>
+              <h1 id="import-title">文档导入</h1>
+              <p>将产品手册和操作文档加入知识库。</p>
+            </div>
+            <span class="service" id="import-service" role="status" hidden></span>
+          </div>
+        </header>
+
+        <div class="import-content">
+          <div class="dropzone" id="dropzone">
+            <span class="upload-mark" aria-hidden="true">↑</span>
+            <h2>拖放文件到这里</h2>
+            <p id="file-help">支持 PDF 和 Markdown，可一次选择多个文件。</p>
+            <input id="file-input" type="file" accept=".pdf,.md,.markdown" multiple hidden>
+            <button class="primary" id="pick-files" type="button" aria-describedby="file-help">选择文件</button>
+          </div>
+          <section class="tasks" aria-labelledby="tasks-title">
+            <h2 id="tasks-title">导入任务</h2>
+            <p class="empty-tasks" id="empty-tasks">文件提交后，可在此查看处理进度和节点日志。</p>
+            <ul class="task-list" id="task-list"></ul>
+          </section>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <template id="message-template">
+    <article class="message">
+      <div class="message-meta"><strong></strong><time></time></div>
+      <div class="message-body"></div>
+    </article>
+  </template>
+
+  <template id="stage-template">
+    <details><summary></summary><ul class="stage-list"></ul></details>
+  </template>
+
+  <template id="task-template">
+    <li class="task">
+      <div><h3></h3><p class="task-size"></p></div>
+      <p class="task-status" role="status"></p>
+      <progress max="1" aria-label="文件处理进度"></progress>
+      <p class="task-note"></p>
+    </li>
+  </template>
+
+  <script>
+    const queryBase = location.origin;
+    const importBase = `${location.protocol}//${location.hostname}:8002`;
+    const byId = id => document.getElementById(id);
+    const clone = id => byId(id).content.firstElementChild.cloneNode(true);
+    const queryInput = byId('query-input');
+    const queryForm = byId('query-form');
+    const sendButton = byId('send-query');
+    const clearButton = byId('clear-history');
+    const chatView = byId('chat-view');
+    const importView = byId('import-view');
+    const chatScroll = byId('chat-scroll');
+    const conversation = byId('conversation');
+    const navButtons = document.querySelectorAll('.nav button');
+
+    function getSessionId() {
+      const fallback = 'sess-' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+      try {
+        const existing = localStorage.getItem('kb_session_id');
+        if (existing) return existing;
+        localStorage.setItem('kb_session_id', fallback);
+      } catch {
+        // The current page can still hold a session if browser storage is blocked.
+      }
+      return fallback;
+    }
+
+    const sessionId = getSessionId();
+    const historyUrl = queryBase + '/history/' + encodeURIComponent(sessionId);
+    const statusLabels = new Map([
+      ['pending', '等待处理'],
+      ['processing', '处理中'],
+      ['completed', '已完成'],
+      ['failed', '处理失败']
+    ]);
+
+    let activeView = chatView;
+    let savedChatScroll = 0;
+    let savedImportScroll = 0;
+    let scrollOnReturn = false;
+    let queryBusy = true;
+
+    for (const button of navButtons) {
+      button.addEventListener('click', () => {
+        const next = byId(button.getAttribute('aria-controls'));
+        if (next === activeView) return;
+        if (activeView === chatView) {
+          savedChatScroll = chatScroll.scrollTop;
+          scrollOnReturn = nearLatestMessage();
+        } else {
+          savedImportScroll = window.scrollY;
+        }
+
+        activeView.hidden = true;
+        next.hidden = false;
+        activeView = next;
+        for (const nav of navButtons) nav.setAttribute('aria-pressed', String(nav === button));
+
+        window.scrollTo(0, next === importView ? savedImportScroll : 0);
+        if (next === chatView) chatScroll.scrollTop = scrollOnReturn ? chatScroll.scrollHeight : savedChatScroll;
+      });
+    }
+
+    function nearLatestMessage() {
+      return chatScroll.scrollHeight - chatScroll.scrollTop - chatScroll.clientHeight < 80;
+    }
+
+    function scrollToLatest(follow = true) {
+      if (follow && activeView === chatView) chatScroll.scrollTop = chatScroll.scrollHeight;
+    }
+
+    function setStatus(node, text, state = '') {
+      if (node.textContent !== text) node.textContent = text;
+      if (node.dataset.state !== state) node.dataset.state = state;
+    }
+
+    async function requestJson(url, options = {}, timeoutMs = 12000) {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const response = await fetch(url, { ...options, signal: controller.signal, cache: 'no-store' });
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return await response.json();
+      } finally {
+        clearTimeout(timeout);
+      }
+    }
+
+    function updateQueryControls() {
+      sendButton.disabled = queryBusy || !queryInput.value.trim();
+      clearButton.disabled = queryBusy;
+    }
+
+    function showEmptyChat() {
+      byId('empty-chat').hidden = conversation.childElementCount > 0;
+      byId('empty-chat-title').textContent = '你想查找什么？';
+      byId('examples').hidden = false;
+    }
+
+    function formatTime(ts) {
+      const date = ts ? new Date(Number(ts) * 1000) : new Date();
+      return Number.isNaN(date.getTime()) ? new Date() : date;
+    }
+
+    function addMessage(role, text, ts) {
+      const message = clone('message-template');
+      const timestamp = formatTime(ts);
+      message.classList.add(role);
+      message.querySelector('strong').textContent = role === 'user' ? '你' : '掌柜智库';
+      const time = message.querySelector('time');
+      time.dateTime = timestamp.toISOString();
+      time.textContent = timestamp.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+      const body = message.querySelector('.message-body');
+      body.textContent = text;
+      conversation.append(message);
+      byId('empty-chat').hidden = true;
+      return body;
+    }
+
+    function stageDetails(open = false) {
+      const details = clone('stage-template');
+      details.open = open;
+      return details;
+    }
+
+    function updateStages(details, title, data) {
+      const done = Array.isArray(data.done_list) ? data.done_list : [];
+      const running = Array.isArray(data.running_list) ? data.running_list : [];
+      details.querySelector('summary').textContent = title + ' · 已完成 ' + done.length + ' · 进行中 ' + running.length;
+      const lines = [
+        ...done.map(node => '已完成 · ' + node),
+        ...running.map(node => '进行中 · ' + node)
+      ];
+      const items = (lines.length ? lines : ['暂无节点记录']).map(line => {
+        const item = document.createElement('li');
+        item.textContent = line;
+        return item;
+      });
+      const list = details.querySelector('ul');
+      if (list.childElementCount !== items.length ||
+          items.some((item, index) => item.textContent !== list.children[index].textContent)) {
+        list.replaceChildren(...items);
+      }
+    }
+
+    function imageUrl(candidate) {
+      if (typeof candidate !== 'string') return '';
+      try {
+        const url = new URL(candidate.trim().replace(/[)\]}'"，。,;；】）]+$/u, ''));
+        if (['http:', 'https:'].includes(url.protocol) && !url.username && !url.password &&
+            /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(url.pathname)) {
+          return url.href;
+        }
+      } catch {
+        // Unrecognized candidates remain visible as plain text.
+      }
+      return '';
+    }
+
+    function answerParts(answer, imageUrls) {
+      const raw = typeof answer === 'string' ? answer : '';
+      // Legacy answers may place the marker inline (for example "见图：【图片】URL").
+      const markers = [...raw.matchAll(/【[ \t]*图片[ \t]*】|\[[ \t]*图片[ \t]*\]/gu)];
+      const marker = markers.at(-1);
+      const tail = marker ? raw.slice(marker.index + marker[0].length) : '';
+      const tailLines = tail.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+      // Only treat URLs in the explicit image section as inline image candidates.
+      // A URL may contain literal spaces in old payloads; split only at a second URL
+      // scheme so those spaces can be encoded by imageUrl() without losing the path.
+      const blockImages = tailLines.map(line => {
+        if (!/^https?:\/\//i.test(line)) return '';
+        const firstUrl = line.split(/\s+(?=https?:\/\/)/i, 1)[0];
+        return imageUrl(firstUrl);
+      });
+      const imageSection = Boolean(marker) && tailLines.length > 0 && blockImages.every(Boolean);
+      const candidates = [
+        ...blockImages,
+        ...(Array.isArray(imageUrls) ? imageUrls.map(imageUrl) : [])
+      ];
+      const images = new Set(candidates.filter(Boolean));
+      return { text: (imageSection ? raw.slice(0, marker.index) : raw).trim(), images };
+    }
+
+    function renderAnswer(container, raw, imageUrls, fallback = '本次查询未返回答案。') {
+      const { text, images } = answerParts(raw, imageUrls);
+      const heading = /(?:^|\r?\n)[ \t]*(?:#{1,6}[ \t]+)?(?:\*\*)?(?:【(?:来源索引|来源|引用来源|参考资料|参考文献|资料来源)】|(?:来源索引|来源|引用来源|参考资料|参考文献|资料来源)(?:\*\*)?(?:[ \t]*[:：]|(?=[ \t]*(?:\r?\n|$))))/u;
+      const source = heading.exec(text);
+      const sourceText = source ? text.slice(source.index + source[0].length).replace(/^[\s:*：]+/u, '') : '';
+      const bodyText = sourceText ? text.slice(0, source.index).trimEnd() : text;
+      const prose = document.createElement('div');
+
+      let offset = 0;
+      for (const citation of bodyText.matchAll(/\[\d{1,3}\](?!\()|【\d{1,3}】/g)) {
+        prose.append(bodyText.slice(offset, citation.index));
+        const tag = document.createElement('span');
+        tag.className = 'citation';
+        tag.textContent = citation[0];
+        prose.append(tag);
+        offset = citation.index + citation[0].length;
+      }
+      prose.append(bodyText.slice(offset) || (prose.childNodes.length || sourceText ? '' : fallback));
+      container.replaceChildren(prose);
+
+      if (sourceText) {
+        const index = document.createElement('section');
+        index.className = 'source-index';
+        const label = document.createElement('h3');
+        label.textContent = '来源索引';
+        index.append(label);
+        for (const sourceLine of sourceText.split(/\r?\n/)) {
+          if (!sourceLine.trim()) continue;
+          const entry = document.createElement('div');
+          entry.className = 'source-entry';
+          entry.textContent = sourceLine.trim();
+          index.append(entry);
+        }
+        container.append(index);
+      }
+
+      if (images.size) {
+        const gallery = document.createElement('div');
+        gallery.className = 'answer-images';
+        for (const [index, url] of [...images].entries()) {
+          const link = document.createElement('a');
+          link.href = url;
+          link.target = '_blank';
+          link.rel = 'noopener noreferrer';
+          const image = document.createElement('img');
+          image.alt = '';
+          image.loading = 'lazy';
+          image.referrerPolicy = 'no-referrer';
+          image.addEventListener('error', () => image.remove());
+          image.src = url;
+          link.append(image, '查看参考图片 ' + (index + 1));
+          gallery.append(link);
+        }
+        container.append(gallery);
+      }
+    }
+
+    async function checkQueryService() {
+      const indicator = byId('query-service');
+      try {
+        const health = await requestJson(queryBase + '/health', {}, 4000);
+        if (health?.ok !== true) throw new Error('Invalid health response');
+        setStatus(indicator, '问答服务已连接', 'ok');
+      } catch {
+        setStatus(indicator, '问答服务未连接', 'error');
+      } finally {
+        setTimeout(checkQueryService, 5000);
+      }
+    }
+
+    async function loadHistory() {
+      try {
+        const { items } = await requestJson(historyUrl);
+        if (!Array.isArray(items)) throw new Error('Invalid history response');
+        for (const item of items) {
+          if (item?.role === 'user') {
+            addMessage('user', item.text || '', item.ts);
+          } else if (item?.role === 'assistant') {
+            const body = addMessage('assistant', '', item.ts);
+            body.classList.add('answer');
+            renderAnswer(body, item.text, item.image_urls);
+          }
+        }
+      } catch {
+        byId('chat-notice').textContent = '未能加载会话历史，仍可发送新问题。';
+      } finally {
+        queryBusy = false;
+        updateQueryControls();
+        showEmptyChat();
+        scrollToLatest();
+      }
+    }
+
+    function openAnswerStream(id, turn) {
+      const stream = new EventSource(queryBase + '/stream/' + encodeURIComponent(id));
+      let buffer = '';
+      let stages = {};
+      let finished = false;
+      let completionTimer;
+
+      function finish(data, error = '') {
+        if (finished) return;
+        finished = true;
+        clearTimeout(completionTimer);
+        stream.close();
+        const follow = nearLatestMessage();
+        const answer = typeof data.answer === 'string' && data.answer.trim() ? data.answer : buffer;
+        renderAnswer(turn.answer, answer, data.image_urls, error ? '' : undefined);
+        turn.error.textContent = error;
+        turn.details.open = false;
+        updateStages(turn.details, '查询进度 · ' + (error ? '查询中断' : '已完成'), stages);
+        byId('query-announcement').textContent = error || '回答已生成。';
+        queryBusy = false;
+        updateQueryControls();
+        scrollToLatest(follow);
+      }
+
+      function receive(type, handler) {
+        stream.addEventListener(type, event => {
+          if (finished) return;
+          try {
+            const data = JSON.parse(event.data);
+            if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('Invalid event data');
+            handler(data);
+          } catch {
+            finish({}, '问答服务返回了无法读取的内容，请重新发送问题。');
+          }
+        });
+      }
+
+      receive('progress', data => {
+        stages = data;
+        updateStages(turn.details, '查询进度 · ' + (statusLabels.get(data.status) || '等待处理'), stages);
+        if (['completed', 'failed'].includes(data.status) && !completionTimer) {
+          // Allow the server to send the final answer or error after terminal progress.
+          const error = data.status === 'failed' ? '问答处理失败，请重新发送问题。' : '';
+          completionTimer = setTimeout(() => finish({}, error), 2000);
+        }
+      });
+      receive('delta', data => {
+        if (typeof data.delta !== 'string') throw new Error('Invalid delta');
+        const follow = nearLatestMessage();
+        buffer += data.delta;
+        turn.answer.textContent = buffer;
+        scrollToLatest(follow);
+      });
+      function finishAnswer(data) {
+        if (data.error) {
+          finish(data, '问答处理失败，请重新发送问题。');
+        } else {
+          finish(data);
+        }
+      }
+      receive('final', finishAnswer);
+      receive('final_answer', finishAnswer);
+      stream.addEventListener('error', event => {
+        if (event.data) {
+          finish({}, '问答处理失败，请重新发送问题。');
+        } else if (stages.status === 'completed') {
+          finish({});
+        } else {
+          finish({}, '问答连接中断，请重新发送问题。');
+        }
+      });
+    }
+
+    async function sendQuery() {
+      const question = queryInput.value.trim();
+      if (queryBusy || !question) return;
+      queryBusy = true;
+      queryInput.value = '';
+      updateQueryControls();
+      addMessage('user', question);
+      const body = addMessage('assistant', '');
+      const answer = document.createElement('div');
+      answer.className = 'answer';
+      answer.textContent = '正在查找相关资料…';
+      const error = document.createElement('div');
+      error.className = 'answer-error';
+      const details = stageDetails(true);
+      updateStages(details, '查询进度 · 等待处理', {});
+      body.append(answer, error, details);
+      byId('query-announcement').textContent = '已发送问题，正在查找相关资料。';
+      scrollToLatest();
+
+      try {
+        const data = await requestJson(queryBase + '/query', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: question, session_id: sessionId, is_stream: true })
+        });
+        if (typeof data?.session_id !== 'string' || !data.session_id) throw new Error('Missing session ID');
+        openAnswerStream(data.session_id, { answer, error, details });
+      } catch {
+        answer.textContent = '';
+        error.textContent = '未能启动问答，请检查问答服务后重新发送。';
+        byId('query-announcement').textContent = error.textContent;
+        details.hidden = true;
+        if (!queryInput.value) queryInput.value = question;
+        queryBusy = false;
+        updateQueryControls();
+      }
+    }
+
+    queryForm.addEventListener('submit', event => {
+      event.preventDefault();
+      queryInput.focus();
+      sendQuery();
+    });
+    queryInput.addEventListener('input', updateQueryControls);
+    queryInput.addEventListener('keydown', event => {
+      if (event.key === 'Enter' && !event.shiftKey && !event.isComposing && event.keyCode !== 229) {
+        event.preventDefault();
+        sendQuery();
+      }
+    });
+    byId('examples').addEventListener('click', event => {
+      const draft = event.target.dataset.draft;
+      if (draft && !queryInput.value.trim()) queryInput.value = draft;
+      queryInput.focus();
+      queryInput.setSelectionRange(queryInput.value.length, queryInput.value.length);
+      updateQueryControls();
+    });
+    clearButton.addEventListener('click', async () => {
+      if (queryBusy || !window.confirm('确定清空当前会话的历史记录？此操作无法撤销。')) return;
+      queryBusy = true;
+      updateQueryControls();
+      try {
+        await requestJson(historyUrl, { method: 'DELETE' });
+        byId('chat-notice').textContent = '';
+        byId('query-announcement').textContent = '会话历史已清空。';
+      } catch {
+        byId('chat-notice').textContent = '服务端清空失败。已清除本页显示，刷新后可能重新出现历史。';
+      } finally {
+        conversation.replaceChildren();
+        showEmptyChat();
+        queryBusy = false;
+        updateQueryControls();
+        if (activeView === chatView && document.activeElement === document.body) clearButton.focus();
+      }
+    });
+
+    const importIndicator = byId('import-service');
+    const dropzone = byId('dropzone');
+    const fileInput = byId('file-input');
+    const taskList = byId('task-list');
+
+    function importConnectionError(text = '') {
+      importIndicator.hidden = !text;
+      setStatus(importIndicator, text, text ? 'error' : '');
+    }
+
+    function addImportTask(file) {
+      const row = clone('task-template');
+      row.querySelector('h3').textContent = file.name;
+      const formatter = new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 1 });
+      row.querySelector('.task-size').textContent = formatter.format(file.size / 1024) + ' KB';
+      const details = stageDetails();
+      updateStages(details, '节点日志', {});
+      row.append(details);
+      taskList.prepend(row);
+      byId('empty-tasks').hidden = true;
+
+      return {
+        status: row.querySelector('.task-status'),
+        progress: row.querySelector('progress'),
+        note: row.querySelector('.task-note'),
+        details
+      };
+    }
+
+    function updateImportTask(task, label, state = '', note = '') {
+      setStatus(task.status, label, state);
+      if (task.note.textContent !== note) task.note.textContent = note;
+      if (state === 'ok') task.progress.value = 1;
+      task.progress.hidden = state === 'error';
+    }
+
+    function pollImport(taskId, task) {
+      const statusUrl = importBase + '/status/' + encodeURIComponent(taskId);
+
+      async function readStatus() {
+        try {
+          const data = await requestJson(statusUrl);
+          const status = data?.status || 'pending';
+          if (!data || typeof data.status !== 'string' || !statusLabels.has(status) ||
+              !Array.isArray(data.done_list) || !Array.isArray(data.running_list)) {
+            throw new Error('Invalid status response');
+          }
+          importConnectionError();
+          // Every acknowledged upload has an upload log even before processing starts.
+          if (data.status === '' && data.done_list.length === 0 && data.running_list.length === 0) {
+            updateImportTask(task, '任务记录已丢失', 'error', '导入服务已无法查询此任务。需要重新导入时，请再次选择文件。');
+            return;
+          }
+          updateStages(task.details, '节点日志', data);
+          if (status === 'completed') {
+            updateImportTask(task, statusLabels.get(status), 'ok');
+            return;
+          }
+          if (status === 'failed') {
+            updateImportTask(task, statusLabels.get(status), 'error', '请展开节点日志查看已执行的步骤。');
+            return;
+          }
+          updateImportTask(task, statusLabels.get(status));
+        } catch {
+          importConnectionError('导入服务状态暂不可用');
+          updateImportTask(task, '等待重新连接', '', '暂时无法获取此文件的状态，正在重试。');
+        }
+        // Wait for this response before scheduling the next status request.
+        setTimeout(readStatus, 2000);
+      }
+
+      setTimeout(readStatus, 2000);
+    }
+
+    async function uploadFile(file) {
+      const task = addImportTask(file);
+      if (!/\.(pdf|md|markdown)$/i.test(file.name)) {
+        updateImportTask(task, '格式不支持', 'error', '请选择 PDF 或 Markdown 文件。');
+        task.details.hidden = true;
+        return;
+      }
+
+      updateImportTask(task, '上传中');
+      const body = new FormData();
+      body.append('files', file);
+      try {
+        const result = await requestJson(importBase + '/upload', { method: 'POST', body }, 120000);
+        const taskId = Array.isArray(result?.task_ids) ? result.task_ids[0] : null;
+        if (typeof taskId !== 'string' || !taskId) {
+          updateImportTask(task, '无法跟踪任务', 'error', '导入服务未返回任务编号。');
+          task.details.hidden = true;
+          return;
+        }
+        importConnectionError();
+        updateImportTask(task, '等待处理');
+        pollImport(taskId, task);
+      } catch {
+        importConnectionError('导入服务请求失败');
+        updateImportTask(task, '上传请求失败', 'error', '请检查导入服务后重新选择文件。');
+        task.details.hidden = true;
+      }
+    }
+
+    function handleFiles(files) {
+      for (const file of files) uploadFile(file);
+    }
+
+    byId('pick-files').addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', () => {
+      handleFiles(fileInput.files);
+      fileInput.value = '';
+    });
+    dropzone.addEventListener('dragover', event => {
+      if (!event.dataTransfer.types.includes('Files')) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'copy';
+      dropzone.dataset.dragging = 'true';
+    });
+    dropzone.addEventListener('dragleave', event => {
+      if (!(event.relatedTarget instanceof Node) || !dropzone.contains(event.relatedTarget)) {
+        delete dropzone.dataset.dragging;
+      }
+    });
+    dropzone.addEventListener('drop', event => {
+      event.preventDefault();
+      delete dropzone.dataset.dragging;
+      handleFiles(event.dataTransfer.files);
+    });
+    importView.addEventListener('dragover', event => {
+      if (event.dataTransfer.types.includes('Files')) event.preventDefault();
+    });
+    importView.addEventListener('drop', event => {
+      if (event.dataTransfer.types.includes('Files')) event.preventDefault();
+    });
+
+    checkQueryService();
+    loadHistory();
+  </script>
+</body>
+</html>

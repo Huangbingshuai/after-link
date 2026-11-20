@@ -1,0 +1,31 @@
+# Secrets and machine-local configuration
+.env
+.env.*
+!.env.example
+
+# Local manuals, generated import data, model weights, and runtime logs
+/doc/
+/output/
+/logs/
+/code/models/**
+!/code/models/**/
+!/code/models/**/README.md
+/教案/
+*.pdf
+*.log
+
+# Local tooling and generated files
+.DS_Store
+.superpowers/
+.codebase-memory/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+node_modules/
+*.sqlite
+*.sqlite3
+*.db
