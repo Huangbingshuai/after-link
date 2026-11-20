@@ -2,6 +2,8 @@
 
 AfterLink 是一个本地运行的文档知识库与问答应用：导入 PDF 或 Markdown，进行向量与图谱检索，并在统一工作台中查询知识库。
 
+![AfterLink 统一工作台，左侧可切换知识问答与文档导入](docs/assets/afterlink-workspace.png)
+
 ## 功能
 
 - **统一工作台**：问答和文档导入入口集中在同一界面。
