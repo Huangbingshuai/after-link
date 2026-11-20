@@ -1,26 +1,69 @@
-# AfterLink 知识工作台
+# AfterLink · 掌柜智库
 
-AfterLink 是一个本地运行的文档知识库与问答应用。导入产品手册后，可以在统一工作台中提问，并通过向量检索、图谱检索和重排查找相关内容。
+AfterLink 是面向**产品手册**的本地知识工作台，不是通用聊天机器人。它将 PDF/Markdown 手册整理成带产品名和章节信息的知识切片；问答时先识别并确认产品型号，再从手册和可选的网络搜索中检索依据，最后由配置的大模型组织回答。
 
-![AfterLink 工作台：知识问答与文档导入使用同一导航](docs/assets/afterlink-workspace.png)
+![掌柜智库工作台：侧栏可在知识问答和文档导入之间切换](docs/assets/afterlink-workspace.png)
 
-## 功能
+## 系统做什么
 
-- 在同一工作台切换**知识问答**和**文档导入**。
-- 导入 PDF（MinerU 解析）和 Markdown，跟踪后台处理任务。
-- 使用 BGE-M3、Milvus 和 BGE Reranker 检索知识库；Neo4j 保存文档图谱。
-- 使用 MongoDB 保存会话历史，MinIO 保存导入文件与图片。
-- 可选使用 DashScope WebSearch MCP 扩展网络检索。
+### 手册如何进入知识库
+
+```mermaid
+flowchart LR
+    A[PDF] --> B[MinerU 解析为 Markdown]
+    C[Markdown] --> D[读取正文与本地图片]
+    B --> D
+    D --> E[图片摘要与 MinIO 图片链接]
+    E --> F[按标题切分章节]
+    F --> G[LLM 识别产品名称]
+    G --> H[BGE-M3 生成稠密与稀疏向量]
+    H --> I[Milvus 保存产品索引与文本切片]
+    I --> J[Neo4j 建立产品、文档、切片关系]
+```
+
+- PDF 通过 MinerU 接口解析；Markdown 直接进入后续处理。导入 API 将上传文件暂存在 `output/日期/任务ID/`，并在后台按节点执行流程。
+- 文档按 Markdown 标题切分；过长章节会继续拆分，同一父章节内过短的相邻块会合并。
+- 如果文档引用了本地图片，系统会尝试调用视觉模型生成摘要，把图片上传到 MinIO，并将 Markdown 中的图片链接替换为 MinIO 地址。
+- LLM 从切片中识别产品名称。BGE-M3 为产品名称和正文切片生成稠密、稀疏向量，分别用于产品匹配与混合检索。
+- Milvus 保存向量和切片元数据；Neo4j 保存 `Product → Document → Chunk` 关系以及章节、正文和产品信息。
+
+### 问题如何变成回答
+
+```mermaid
+flowchart LR
+    A[问题与最近会话] --> B[LLM 提取产品名并改写问题]
+    B --> C[Milvus 匹配已导入的产品名]
+    C -->|型号明确| D[直接问题混合检索]
+    C -->|存在候选| E[请用户确认型号]
+    C -->|没有候选| F[提示未找到产品]
+    D --> G[HyDE 混合检索]
+    D --> H[Neo4j 章节词项检索]
+    D --> I[可选 DashScope WebSearch]
+    G --> J[本地结果 RRF 融合]
+    H --> J
+    J --> K[合并网络结果并用 BGE Reranker 重排]
+    I --> K
+    K --> L[大模型生成回答]
+    L --> M[SSE 流式输出并写入 MongoDB 会话历史]
+```
+
+问答面向已导入的产品手册：系统会结合最近会话抽取产品名并改写追问，再到 `ITEM_NAME_COLLECTION` 中匹配产品。高置信度匹配会自动确认；有候选但不足以直接确认时会请求用户选择；没有候选时会提示补充准确型号。它不会把未匹配的问题当成开放域聊天问题直接回答。产品名向量存于 `ITEM_NAME_COLLECTION`；配置模板中的 `ENTITY_NAME_COLLECTION` 目前是预留字段。
+
+型号确认后，工作流并行执行普通 Milvus 混合检索、HyDE（先生成假设性文档，再检索）和 Neo4j 检索；配置 DashScope 后还会并行调用 WebSearch。普通检索、HyDE 与 Neo4j 结果先做 RRF 融合，随后本地结果和网络摘要一起交给 BGE Reranker，再将选出的上下文交给大模型。问答支持 SSE 流式输出，会话历史存于 MongoDB。
+
+## 能力边界
+
+- Neo4j 已参与文档图谱写入和问答检索。当前检索方式是按查询词与活动 `Chunk` 的正文、章节标题做词项重合匹配，并可按产品名过滤；它不是任意 Cypher 查询，也不提供通用的多跳关系推理。
+- 问答结果取决于手册解析质量、产品名识别、模型和检索结果。`/health` 只说明问答 API 可以响应，不代表模型、数据库或外部服务均已就绪。
+- 重导入时，Milvus 当前会按识别出的 `item_name` 从文本切片集合删除该产品已有的全部记录，再写入本次切片。同一产品若有多份独立手册，重导入其中一份会替换该产品在 Milvus 中的旧切片；先备份数据并确认这一行为符合预期。Neo4j 则按文档标识更新图谱节点，并把该文档的旧切片标记为非活动。
 
 ## 快速开始
 
-从仓库根目录执行以下命令。首次安装依赖、下载模型权重和启动 Milvus 可能需要较多时间与磁盘空间。
+以下步骤从仓库根目录执行。需要 macOS/Linux、Conda、Python 3.11+、Docker Desktop 或 Docker Engine，以及 Docker Compose 插件。BGE-M3 和 BGE Reranker 权重不随仓库提供；模型加载、首次向量化和 Milvus 容器启动可能需要较多时间与磁盘空间。
 
-### 1. 准备环境
+### 1. 创建 Python 环境
 
-需要 Conda、Python 3.11+、Docker Desktop 或 Docker Engine，以及 Docker Compose 插件。
-
-建议使用新的 Conda 环境。`uv sync` 会根据锁文件同步环境，并可能移除环境中未声明的包；`--active` 指定当前激活的 Conda 环境。
+建议使用新 Conda 环境。`uv sync` 按 `uv.lock` 同步依赖；它可能移除当前环境中未声明的包。
 
 ```bash
 conda create -n after-link python=3.11 -y
@@ -29,16 +72,30 @@ python -m pip install uv
 uv sync --active --frozen --no-install-project
 ```
 
-### 2. 配置 `.env`
+### 2. 准备配置
 
 ```bash
 cp .env.example .env
 ```
 
-编辑 `.env`，填写 LLM 服务商密钥与地址、MinerU 凭据、本地 BGE 模型路径，以及下面这些本地数据服务连接项。模型权重不包含在仓库中。
+在 `.env` 中填写 LLM 服务的 `OPENAI_BASE_URL`、`OPENAI_API_KEY` 和 `LLM_DEFAULT_TEMPERATURE`。`OPENAI_BASE_URL` 是当前客户端实际读取的地址；`.env.example` 中的 `OPENAI_API_BASE` 是保留的兼容字段。若导入含图片的手册，还需配置视觉模型 `VL_MODEL`；导入 PDF 需配置 MinerU 的 `MINERU_BASE_URL` 和 `MINERU_API_TOKEN`。
+
+为模型路径填写你本机的实际目录：
 
 ```dotenv
-# 与 compose.yaml 的本机开发默认凭据匹配；仅供本机开发
+BGE_M3_PATH=/本机路径/bge-m3
+BGE_DEVICE=cpu
+BGE_FP16=0
+BGE_RERANKER_LARGE=/本机路径/bge-reranker-large
+BGE_RERANKER_DEVICE=cpu
+BGE_RERANKER_FP16=0
+```
+
+若 `BGE_M3_PATH` 留空，代码会尝试加载并下载 `BAAI/bge-m3`；Reranker 则需要提供 `BGE_RERANKER_LARGE`。设备参数按实际硬件调整。
+
+本地 Compose 数据服务的连接值示例：
+
+```dotenv
 MONGO_ROOT_USERNAME=after_link
 MONGO_ROOT_PASSWORD=after_link_mongo_dev
 MONGO_URL=mongodb://after_link:after_link_mongo_dev@127.0.0.1:27017/?authSource=admin
@@ -62,31 +119,20 @@ NEO4J_USERNAME=neo4j
 NEO4J_PASSWORD=after_link_neo4j_dev
 ```
 
-这些凭据与 Compose 本机开发默认值对应。若修改 `.env` 中的 MongoDB、MinIO 或 Neo4j 用户名/密码，也要让 Compose 使用相同的值。不要把真实 API Key、MinerU Token 或 `.env` 提交到 Git。
+这些是与 `compose.yaml` 本机开发默认值对应的示例。改了 MongoDB、MinIO 或 Neo4j 的密码后，要让 `.env` 和 Compose 使用同一组凭据。Milvus 集合名用于本项目首次创建的空集合；连接已有 Milvus 数据时，先填写现有集合名，不要直接复用示例名。
 
-主要模型和外部 API 配置：
+DashScope WebSearch 是可选项：设置 `DASHSCOPE_API_KEY`，并使用 `.env.example` 中的 `MCP_DASHSCOPE_BASE_URL`。未配置时该检索分支会跳过。
 
-| 变量 | 说明 |
-| --- | --- |
-| `OPENAI_BASE_URL`、`OPENAI_API_BASE`、`OPENAI_API_KEY` | OpenAI 兼容服务的地址与密钥；两个地址按 `.env.example` 注释保持一致 |
-| `LLM_DEFAULT_MODEL`、`LLM_DEFAULT_TEMPERATURE`、`VL_MODEL` | 问答模型、温度和视觉模型 |
-| `MINERU_BASE_URL`、`MINERU_API_TOKEN` | PDF 解析；导入 PDF 时必需 |
-| `BGE_M3_PATH`、`BGE_M3`、`BGE_DEVICE`、`BGE_FP16` | BGE-M3 本地模型目录与运行参数 |
-| `BGE_RERANKER_LARGE`、`BGE_RERANKER_DEVICE`、`BGE_RERANKER_FP16` | BGE Reranker 本地模型目录与运行参数 |
-| `DASHSCOPE_API_KEY`、`MCP_DASHSCOPE_BASE_URL` | 可选的 DashScope WebSearch MCP；服务地址见 `.env.example` |
-
-### 3. 启动数据服务
+### 3. 启动本地数据服务
 
 ```bash
 docker compose up -d
 docker compose ps
 ```
 
-默认端口绑定在本机回环地址：MongoDB `27017`、Milvus `19530`、MinIO API `9000`、MinIO Console `9001`、Neo4j Browser `7476`、Neo4j Bolt `7688`。Compose 还会启动 Milvus 所需的 etcd。
-
 ### 4. 启动两个 API
 
-在两个终端分别运行：
+统一工作台把两种前端入口放在同一页面中，但底层仍是两个独立的 FastAPI 进程：问答 API 在 `8003`，导入 API 在 `8002`。分别在两个终端运行：
 
 ```bash
 conda activate after-link
@@ -98,64 +144,71 @@ conda activate after-link
 uvicorn app.query_process.api.query_service:app --host 127.0.0.1 --port 8003
 ```
 
-### 5. 打开工作台并验证
+### 5. 访问和检查
 
-- 统一工作台：<http://127.0.0.1:8003/>
-- 问答 API 健康检查：<http://127.0.0.1:8003/health>
-- 导入页面：<http://127.0.0.1:8002/import.html>
-- 问答 API 文档：<http://127.0.0.1:8003/docs>
-- 导入 API 文档：<http://127.0.0.1:8002/docs>
-- Neo4j Browser：<http://127.0.0.1:7476/>
-- MinIO Console：<http://127.0.0.1:9001/>
+| 用途 | 地址 |
+| --- | --- |
+| 统一工作台（问答与导入） | <http://127.0.0.1:8003/> |
+| 问答健康检查 | <http://127.0.0.1:8003/health> |
+| 问答 API 文档 | <http://127.0.0.1:8003/docs> |
+| 导入 API 文档 | <http://127.0.0.1:8002/docs> |
+| Neo4j Browser | <http://127.0.0.1:7476/> |
+| MinIO Console | <http://127.0.0.1:9001/> |
+
+导入页面由统一工作台侧栏切换，不需要再单独打开旧页面。健康检查可用下面的命令查看：
 
 ```bash
 curl -fsS http://127.0.0.1:8003/health
 ```
 
-健康检查只确认问答 API 能响应，不代表数据库、模型或外部服务都可用。查看容器日志：
+## 接口速查
+
+| 服务 | 方法与路径 | 用途 |
+| --- | --- | --- |
+| 问答 | `POST /query` | 提问；可选择流式响应 |
+| 问答 | `GET /stream/{session_id}` | 接收 SSE 流式事件 |
+| 问答 | `GET /history/{session_id}` | 查询 MongoDB 会话历史 |
+| 问答 | `DELETE /history/{session_id}` | 删除该会话历史 |
+| 导入 | `POST /upload` | 以 multipart 字段 `files` 上传 PDF/Markdown |
+| 导入 | `GET /status/{task_id}` | 查询任务状态和已完成节点 |
+
+## 日志、停止与数据
+
+查看数据服务日志：
 
 ```bash
 docker compose logs -f mongo etcd milvus minio neo4j
 ```
 
-## API 概览
-
-| 服务 | 方法与路径 | 用途 |
-| --- | --- | --- |
-| 问答 | `POST /query` | 提交问题；请求可启用流式响应 |
-| 问答 | `GET /stream/{session_id}` | 接收流式回答 |
-| 问答 | `GET /history/{session_id}` | 查询会话历史 |
-| 问答 | `DELETE /history/{session_id}` | 清除会话历史 |
-| 导入 | `POST /upload` | 上传一个或多个文件并启动导入任务 |
-| 导入 | `GET /status/{task_id}` | 查看导入任务状态 |
-
-## 停止服务
-
-在运行 API 的终端按 `Ctrl+C`。停止容器但保留数据库数据卷：
+在各 API 终端按 `Ctrl+C` 停止进程。停止容器但保留数据库数据卷：
 
 ```bash
 docker compose down
 ```
 
-不要随意使用 `docker compose down -v`，它会删除 Compose 数据卷及其中保存的数据。
+不要随意执行 `docker compose down -v`，它会删除 Compose 数据卷及其中保存的 MongoDB、Milvus、MinIO 和 Neo4j 数据。导入文件和解析产物保存在本机 `output/`，运行日志保存在 `logs/`；这些路径已从 Git 排除。
 
 ## 项目结构
 
-| 路径 | 内容 |
+| 路径 | 作用 |
 | --- | --- |
-| `app/query_process/` | 问答 API、检索工作流和统一工作台 |
-| `app/import_process/` | 文档导入 API 和处理工作流 |
+| `app/query_process/api/` | 问答 API；根路径提供统一工作台 |
+| `app/query_process/agent/` | 产品识别、并行检索、融合重排和回答生成工作流 |
+| `app/query_process/page/workspace.html` | 问答/导入共用的工作台前端 |
+| `app/import_process/api/` | 文件上传、后台任务启动与状态查询 |
+| `app/import_process/agent/` | MinerU 解析、图片处理、切分、向量化和数据入库工作流 |
 | `app/clients/` | MongoDB、Milvus、Neo4j、MinIO 客户端 |
-| `app/lm/` | LLM、嵌入模型与重排模型适配 |
-| `prompts/` | 导入和问答提示词 |
-| `compose.yaml` | 本地数据服务容器配置 |
+| `app/lm/` | LLM、BGE-M3 嵌入与 BGE Reranker 适配 |
+| `prompts/` | 产品识别、查询改写、HyDE 与答案提示词 |
+| `compose.yaml` | MongoDB、Milvus、MinIO、etcd、Neo4j 本地容器 |
 | `.env.example` | 环境变量模板 |
 
-## 安全与数据
+## 数据流与安全说明
 
-- `.env`、PDF 手册、模型权重、日志和导入产物不纳入仓库。
-- Compose 中的开发凭据只适用于本机开发；部署到其他环境前请替换。
-- API 当前面向本机开发。对外部署前应配置身份验证并限制跨域来源；上传文件及问答也可能调用外部服务。
+- PDF 内容会发送到配置的 MinerU 服务解析；图片摘要会发送到配置的视觉模型；问答问题、必要的会话上下文和检索片段会发送到配置的大模型。启用 DashScope 后，改写后的问题还会发送到 WebSearch 服务。使用前应确认对应服务商的数据政策和计费方式。
+- Compose 的主机端口绑定在 `127.0.0.1`。当前 API 没有身份验证，并允许宽泛的跨域访问，适用于本机开发；对外部署前必须补充访问控制并限制 CORS 来源。
+- MinIO 客户端会将导入桶设置为匿名只读，以便前端显示手册图片。不要把含敏感资料的该配置直接暴露到公网。
+- 本地 Compose 凭据只用于开发。`.env`、密钥、PDF 手册和模型权重不提交到仓库。
 
 ## 许可证
 
